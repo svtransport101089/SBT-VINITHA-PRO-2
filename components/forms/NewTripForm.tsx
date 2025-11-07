@@ -29,7 +29,7 @@ interface InvoiceFormProps {
 }
 
 const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSuccess, onCancel, printOnLoad = false, onPrinted = () => {} }) => {
-    const [invoice, setInvoice] = useState<Partial<Invoice>>(initialInvoiceState);
+    const [invoice, setInvoice] = useState<Partial<Invoice & { customer_address1?: string; customer_address2?: string }>>(initialInvoiceState);
     const [availableMemos, setAvailableMemos] = useState<MemoData[]>([]);
     const [allMemos, setAllMemos] = useState<Map<string, MemoData>>(new Map());
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -40,7 +40,8 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
     const calculateTotals = useCallback(() => {
         const total = invoice.memo_nos?.reduce((sum, memoNo) => {
             const memo = allMemos.get(memoNo);
-            return sum + (parseFloat(memo?.trips_total_amt || '0'));
+            // The invoice total is the sum of the balances from the selected memos.
+            return sum + (parseFloat(memo?.trips_balance || '0'));
         }, 0) || 0;
         
         const amountPaid = invoice.amount_paid || 0;
@@ -71,7 +72,12 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
                 if (invoiceIdToLoad) {
                     const loadedInvoice = await getInvoiceById(invoiceIdToLoad);
                     if (loadedInvoice) {
-                        setInvoice(loadedInvoice);
+                        const customer = customersData.find(c => c.customers_name === loadedInvoice.customer_name);
+                        setInvoice({
+                            ...loadedInvoice,
+                            customer_address1: customer?.customers_address1 || '',
+                            customer_address2: customer?.customers_address2 || ''
+                        });
                         const uninvoicedMemos = await getUninvoicedMemosForCustomer(loadedInvoice.customer_name);
                         setAvailableMemos(uninvoicedMemos);
                     } else {
@@ -115,7 +121,17 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
 
     const handleCustomerChange = async (customerName: string) => {
         if (invoice.id) return;
-        setInvoice(prev => ({ ...prev, customer_name: customerName, memo_nos: [] }));
+        
+        const selectedCustomer = customers.find(c => c.customers_name === customerName);
+    
+        setInvoice(prev => ({
+            ...prev,
+            customer_name: customerName,
+            memo_nos: [],
+            customer_address1: selectedCustomer?.customers_address1 || '',
+            customer_address2: selectedCustomer?.customers_address2 || '',
+        }));
+    
         if (customerName) {
             const memos = await getUninvoicedMemosForCustomer(customerName);
             setAvailableMemos(memos);
@@ -170,7 +186,9 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
     
     const selectedMemosDetails = (invoice.memo_nos || [])
         .map(memoNo => allMemos.get(memoNo))
-        .filter((memo): memo is MemoData => memo !== undefined);
+        .filter((memo): memo is MemoData => memo !== undefined)
+        .sort((a, b) => a.trips_memo_no.localeCompare(b.trips_memo_no));
+
 
     return (
         <>
@@ -200,6 +218,8 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
                                         <th className="p-3 text-left font-semibold">Memo No</th>
                                         <th className="p-3 text-left font-semibold">Date</th>
                                         <th className="p-3 text-left font-semibold">Vehicle No</th>
+                                        <th className="p-3 text-center font-semibold">Total Hours</th>
+                                        <th className="p-3 text-center font-semibold">Total Km</th>
                                         <th className="p-3 text-right font-semibold">Amount</th>
                                     </tr>
                                 </thead>
@@ -217,10 +237,12 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
                                             <td className="p-3 font-medium">{memo.trips_memo_no}</td>
                                             <td className="p-3">{memo.trip_operated_date1}</td>
                                             <td className="p-3">{memo.trips_vehicle_no}</td>
+                                            <td className="p-3 text-center">{memo.trips_total_hours}</td>
+                                            <td className="p-3 text-center">{memo.trips_totalKm}</td>
                                             <td className="p-3 text-right">{parseFloat(memo.trips_total_amt).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</td>
                                         </tr>
                                     )) : (
-                                        <tr><td colSpan={5} className="p-4 text-center text-gray-500">No available memos for this customer.</td></tr>
+                                        <tr><td colSpan={7} className="p-4 text-center text-gray-500">No available memos for this customer.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -265,7 +287,7 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
             
             <div className="invoice-print-area print-show">
                 <div className="p-4 bg-white">
-                    <div className="flex justify-between items-start">
+                    <header className="flex justify-between items-start pb-4 border-b">
                         <div className="flex items-center">
                             <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhFY6OA_-B3xK_AfiNz8lGz87LIZIg9LxoslTBZtsl22lvtsG-zdRDyveJXTWCdNC9T3tKsmpjVOnN1zpEJhE97MD0J3zEN2MQ5ozlwXZkfbGOQAiZfEaw_KbWMF74rCDZD5E2wsqrkuZpwXIsELOMuqizXvIFs65ViFGdGqFuE9QpURT4jve_hr8K714M/s794/sbt%20logo.jpg" alt="SBT Transport Logo" className="h-20 w-auto mr-4" />
                             <div>
@@ -275,71 +297,94 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({ invoiceIdToLoad, onSaveSucces
                             </div>
                         </div>
                         <h2 className="text-3xl font-bold text-gray-700">INVOICE</h2>
-                    </div>
+                    </header>
 
-                    <div className="grid grid-cols-2 gap-4 mt-6 p-2 border-y-2 border-black">
+                    <section className="grid grid-cols-2 gap-8 mt-6 pb-6">
                         <div>
-                            <h3 className="font-bold text-gray-800 mb-1">Bill To:</h3>
-                            <p className="font-semibold text-lg">{invoice.customer_name}</p>
+                            <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">Bill To</h3>
+                            <p className="font-bold text-lg text-gray-800">{invoice.customer_name}</p>
+                            <p className="text-sm text-gray-600">{invoice.customer_address1}</p>
+                            <p className="text-sm text-gray-600">{invoice.customer_address2}</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-sm"><span className="font-bold">Invoice No:</span> {invoice.invoice_no}</p>
-                            <p className="text-sm"><span className="font-bold">Invoice Date:</span> {invoice.invoice_date}</p>
+                             <div className="flex justify-end items-center mb-1">
+                                <p className="text-sm font-semibold text-gray-500 w-32 text-left">Invoice No:</p>
+                                <p className="text-sm font-bold text-gray-800">{invoice.invoice_no}</p>
+                            </div>
+                             <div className="flex justify-end items-center">
+                                <p className="text-sm font-semibold text-gray-500 w-32 text-left">Invoice Date:</p>
+                                <p className="text-sm font-bold text-gray-800">{invoice.invoice_date}</p>
+                            </div>
                         </div>
-                    </div>
+                    </section>
                     
-                    <div className="mt-6">
+                    <main className="mt-4">
                         <table className="min-w-full text-sm">
-                            <thead>
+                            <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="p-2 text-left font-bold">Memo No</th>
-                                    <th className="p-2 text-left font-bold">Date</th>
-                                    <th className="p-2 text-left font-bold">Vehicle No</th>
-                                    <th className="p-2 text-right font-bold">Amount</th>
+                                    <th className="p-2 text-left font-bold text-gray-600 uppercase tracking-wider border-b-2 border-gray-200">Memo No</th>
+                                    <th className="p-2 text-left font-bold text-gray-600 uppercase tracking-wider border-b-2 border-gray-200">Vehicle No</th>
+                                    <th className="p-2 text-center font-bold text-gray-600 uppercase tracking-wider border-b-2 border-gray-200">Total Hours</th>
+                                    <th className="p-2 text-center font-bold text-gray-600 uppercase tracking-wider border-b-2 border-gray-200">Total Km</th>
+                                    <th className="p-2 text-right font-bold text-gray-600 uppercase tracking-wider border-b-2 border-gray-200">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {selectedMemosDetails.map(memo => (
-                                    <tr key={memo.trips_memo_no}>
+                                    <tr key={memo.trips_memo_no} className="border-b border-gray-200">
                                         <td className="p-2">{memo.trips_memo_no}</td>
-                                        <td className="p-2">{memo.trip_operated_date1}</td>
                                         <td className="p-2">{memo.trips_vehicle_no}</td>
-                                        <td className="p-2 text-right">{parseFloat(memo.trips_total_amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                        <td className="p-2 text-center">{memo.trips_total_hours}</td>
+                                        <td className="p-2 text-center">{memo.trips_totalKm}</td>
+                                        <td className="p-2 text-right">{parseFloat(memo.trips_balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ))}
+                                {Array.from({ length: Math.max(0, 10 - selectedMemosDetails.length) }).map((_, index) => (
+                                    <tr key={`empty-${index}`} className="border-b border-gray-200 h-8">
+                                        <td className="p-2">&nbsp;</td>
+                                        <td className="p-2">&nbsp;</td>
+                                        <td className="p-2">&nbsp;</td>
+                                        <td className="p-2">&nbsp;</td>
+                                        <td className="p-2">&nbsp;</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
+                    </main>
 
-                     <div className="flex justify-end mt-4">
-                        <div className="w-1/3 text-sm">
-                            <div className="flex justify-between py-1 border-b">
-                                <span className="font-bold">Total Amount:</span>
-                                <span className="font-bold">{invoice.total_amount?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
+                     <section className="flex justify-end mt-6">
+                        <div className="w-2/5 text-sm">
+                             <div className="flex justify-between p-2">
+                                <span className="font-semibold text-gray-600">Total Amount:</span>
+                                <span>{invoice.total_amount?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
                             </div>
-                            <div className="flex justify-between py-1 border-b">
-                                <span className="font-bold">Amount Paid:</span>
+                            <div className="flex justify-between p-2">
+                                <span className="font-semibold text-gray-600">Amount Paid:</span>
                                 <span>{invoice.amount_paid?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
                             </div>
-                            <div className="flex justify-between py-1 bg-gray-100">
-                                <span className="font-bold">Balance Due:</span>
-                                <span className="font-bold text-lg">{invoice.balance?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
+                            <div className="flex justify-between p-2 bg-gray-100 rounded-md mt-2">
+                                <span className="font-bold text-base">Balance Due:</span>
+                                <span className="font-bold text-base">{invoice.balance?.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
                             </div>
                         </div>
-                    </div>
+                    </section>
 
-                    <div className="mt-24 grid grid-cols-2 gap-8 text-xs">
-                        <div>
-                            <h5 className="font-bold mb-1">BANK DETAILS:</h5>
-                            <p><strong>Bank Name:</strong> STATE BANK OF INDIA</p>
-                            <p><strong>Branch:</strong> ELDAMS ROAD BRANCH ALWARPET</p>
-                            <p><strong>A/C No:</strong> 42804313699</p>
-                            <p><strong>IFSC:</strong> SBIN0002209</p>
+                    <footer className="mt-16 pt-8 border-t border-gray-200 text-xs text-gray-600">
+                        <div className="grid grid-cols-2 gap-8">
+                            <div>
+                                <h5 className="font-bold mb-2 text-gray-700 uppercase">Bank Details</h5>
+                                <p><strong>Bank Name:</strong> STATE BANK OF INDIA</p>
+                                <p><strong>Branch:</strong> ELDAMS ROAD BRANCH ALWARPET</p>
+                                <p><strong>A/C No:</strong> 42804313699</p>
+                                <p><strong>IFSC:</strong> SBIN0002209</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="inline-block mt-16">
+                                     <p className="border-t border-gray-400 pt-2 font-bold">Authorized Signatory</p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="text-center self-end pt-16">
-                            <p className="font-bold border-t border-gray-500 pt-1">Authorized Signatory</p>
-                        </div>
-                    </div>
+                    </footer>
                 </div>
             </div>
         </>
