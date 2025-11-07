@@ -20,11 +20,13 @@ const App: React.FC = () => {
   const [editingMemoNo, setEditingMemoNo] = useState<string | null>(null);
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [printOnLoad, setPrintOnLoad] = useState(false);
+  const [printInvoiceOnLoad, setPrintInvoiceOnLoad] = useState(false);
 
   const handleNavigate = (page: Page) => {
     setEditingMemoNo(null);
     setEditingInvoiceId(null);
     setPrintOnLoad(false);
+    setPrintInvoiceOnLoad(false);
     setCurrentPage(page);
   };
 
@@ -50,11 +52,19 @@ const App: React.FC = () => {
   // New Invoice Handlers
   const handleEditInvoice = (invoiceId: number) => {
       setEditingInvoiceId(invoiceId);
+      setPrintInvoiceOnLoad(false);
+      setCurrentPage(Page.INVOICE_FORM);
+  };
+
+  const handleDownloadInvoice = (invoiceId: number) => {
+      setEditingInvoiceId(invoiceId);
+      setPrintInvoiceOnLoad(true);
       setCurrentPage(Page.INVOICE_FORM);
   };
 
   const handleInvoiceFormClose = () => {
       setEditingInvoiceId(null);
+      setPrintInvoiceOnLoad(false);
       setCurrentPage(Page.MANAGE_INVOICES);
   };
 
@@ -73,9 +83,9 @@ const App: React.FC = () => {
       case Page.MANAGE_MEMOS:
         return <MemoCRUD onEditMemo={handleEditMemo} onDownloadMemo={handleDownloadMemo} />;
       case Page.MANAGE_INVOICES:
-        return <InvoiceCRUD onEditInvoice={handleEditInvoice} onCreateInvoice={() => setCurrentPage(Page.INVOICE_FORM)} />;
+        return <InvoiceCRUD onEditInvoice={handleEditInvoice} onCreateInvoice={() => setCurrentPage(Page.INVOICE_FORM)} onDownloadInvoice={handleDownloadInvoice} />;
       case Page.INVOICE_FORM:
-        return <InvoiceForm invoiceIdToLoad={editingInvoiceId} onSaveSuccess={handleInvoiceFormClose} onCancel={handleInvoiceFormClose} />;
+        return <InvoiceForm invoiceIdToLoad={editingInvoiceId} onSaveSuccess={handleInvoiceFormClose} onCancel={handleInvoiceFormClose} printOnLoad={printInvoiceOnLoad} onPrinted={handleInvoiceFormClose} />;
       case Page.MANAGE_CUSTOMERS:
         return <CustomerCRUD />;
       case Page.VIEW_ALL_SERVICES:
@@ -89,18 +99,21 @@ const App: React.FC = () => {
       default:
         return <Dashboard />;
     }
-  }, [currentPage, editingMemoNo, editingInvoiceId, printOnLoad]);
+  }, [currentPage, editingMemoNo, editingInvoiceId, printOnLoad, printInvoiceOnLoad]);
 
   const pageTitle = useMemo(() => {
     if (currentPage === Page.CREATE_MEMO && editingMemoNo) {
       return printOnLoad ? `Download Memo: ${editingMemoNo}` : `Edit Memo: ${editingMemoNo}`;
     }
     if (currentPage === Page.INVOICE_FORM) {
+        if (printInvoiceOnLoad) {
+            return `Download Invoice`;
+        }
         return editingInvoiceId ? `Edit Invoice` : 'Create New Invoice';
     }
     const pageName = currentPage.replace(/_/g, ' ');
     return pageName.charAt(0).toUpperCase() + pageName.slice(1).toLowerCase();
-  }, [currentPage, editingMemoNo, editingInvoiceId, printOnLoad]);
+  }, [currentPage, editingMemoNo, editingInvoiceId, printOnLoad, printInvoiceOnLoad]);
 
 
   return (

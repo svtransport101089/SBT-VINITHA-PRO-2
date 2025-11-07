@@ -15,19 +15,24 @@
 }
 </script>
 <style>
+    .print-show { 
+      display: none; 
+    }
+
     @media print {
       @page {
-        size: A5 landscape;
-        margin: 0.5cm;
+        /* Defaulting to A4 portrait, which is better for invoices. Memos will adapt. */
+        size: A4 portrait;
+        margin: 1cm;
       }
 
       body {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        background-color: #fff;
+        background-color: #fff !important;
       }
 
-      /* Hide sidebar, header, and form buttons */
+      /* Hide sidebar, header, and elements marked with .print-hide */
       body > #root > div > div:first-child, /* Sidebar */
       body > #root > div > div > header, /* Header */
       .print-hide {
@@ -45,7 +50,28 @@
         max-width: 100% !important;
       }
 
-      /* Style the invoice form for printing */
+      .print-show {
+          display: block !important;
+      }
+
+      /* --- Invoice Print Styles --- */
+      .invoice-print-area {
+        font-size: 10pt;
+      }
+      .invoice-print-area table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .invoice-print-area th, .invoice-print-area td {
+        border-bottom: 1px solid #ccc;
+      }
+      .invoice-print-area th {
+        border-bottom-width: 2px;
+        border-bottom-color: #000;
+      }
+
+      /* --- Memo Print Styles --- */
+      /* Style the memo form for printing */
       form > .bg-white {
         box-shadow: none !important;
         border: none !important;
@@ -53,7 +79,7 @@
         font-size: 9px;
       }
 
-      /* Adjust logo and header for A5 */
+      /* Adjust memo logo and header */
       form img {
         height: 20mm !important;
         width: auto !important;
@@ -62,14 +88,13 @@
         font-size: 14px !important;
       }
 
-
-      /* Make inputs look like static text */
-      input,
-      textarea,
-      input[readonly],
-      input[type="date"],
-      input[type="time"],
-      input[type="number"] {
+      /* Make memo inputs look like static text */
+      form input,
+      form textarea,
+      form input[readonly],
+      form input[type="date"],
+      form input[type="time"],
+      form input[type="number"] {
         border: none !important;
         background-color: transparent !important;
         box-shadow: none !important;
@@ -80,9 +105,12 @@
         color: #000 !important;
         font-size: 9px !important;
       }
+       form .relative.w-full input {
+          padding: 1px !important;
+       }
 
-      /* Hide the search button */
-      input[name="trips_memo_no"] + button {
+      /* Hide the search button in memo form */
+      form input[name="trips_memo_no"] + button {
         display: none !important;
       }
     }
